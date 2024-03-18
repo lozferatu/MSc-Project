@@ -1,0 +1,52 @@
+No.,Name,Type,Description
+1,FIT-101,Sensor,Flow meter; Measures inflow into raw water tank.
+2,LIT-101,Sensor,Level Transmitter; Raw water tank level.
+3,MV-101,Actuator,Motorized valve; Controls water flow to the raw water tank.
+4,P-101,Actuator,Pump; Pumps water from raw water tank to second stage.
+5,P-102 (backup),Actuator,Pump; Pumps water from raw water tank to second stage.
+6,AIT-201,Sensor,Conductivity analyser; Measures NaCl level.
+7,AIT-202,Sensor,pH analyser; Measures HCl level.
+8,AIT-203,Sensor,ORP analyser; Measures NaOCl level.
+9,FIT-201,Sensor,Flow Transmitter; Control dosing pumps.
+10,MV-201,Actuator,Motorized valve; Controls water flow to the UF feed water tank.
+11,P-201,Actuator,Dosing pump; NaCl dosing pump.
+12,P-202 (backup),Actuator,Dosing pump; NaCl dosing pump.
+13,P-203,Actuator,Dosing pump; HCl dosing pump.
+14,P-204 (backup),Actuator,Dosing pump; HCl dosing pump.
+15,P-205,Actuator,Dosing pump; NaOCl dosing pump.
+16,P-206 (backup),Actuator,Dosing pump; NaOCl dosing pump.
+17,DPIT-301,Sensor,Differential pressure indicating transmitter; Controls the backwash process.
+18,FIT-301,Sensor,Flow meter; Measures the flow of water in the UF stage.
+19,LIT-301,Sensor,Level Transmitter; UF feed water tank level.
+20,MV-301,Actuator,Motorized Valve; Controls UF-Backwash process.
+21,MV-302,Actuator,Motorized Valve; Controls water from UF process to DeChlorination unit.
+22,MV-303,Actuator,Motorized Valve; Controls UF-Backwash drain.
+23,MV-304,Actuator,Motorized Valve; Controls UF drain.
+24,P-301 (backup),Actuator,UF feed Pump; Pumps water from UF feed water tank to RO feed water tank via UF filtration.
+25,P-302,Actuator,UF feed Pump; Pumps water from UF feed water tank to ROfeed water tank via UF filtration.
+26,AIT-401,Sensor,RO hardness meter of water.
+27,AIT-402,Sensor,"ORP meter; Controls the NaHSO3dosing(P203), NaOCl dosing(P205)."
+28,FIT-401,Sensor,Flow Transmitter ; Controls the UV dechlorinator.
+29,LIT-401,Actuator,Level Transmitter; RO feed water tank level.
+30,P-401 (backup),Actuator,Pump; Pumps water from RO feed tank to UV dechlorinator.
+31,P-402,Actuator,Pump; Pumps water from RO feed tank to UV dechlorinator.
+32,P-403,Actuator,Sodium bi-sulphate pump.
+33,P-404 (backup),Actuator,Sodium bi-sulphate pump.
+34,UV-401,Actuator,Dechlorinator; Removes chlorine from water.
+35,AIT-501,Sensor,RO pH analyser; Measures HCl level.
+36,AIT-502,Sensor,RO feed ORP analyser; Measures NaOCl level.
+37,AIT-503,Sensor,RO feed conductivity analyser; Measures NaCl level.
+38,AIT-504,Sensor,RO permeate conductivity analyser; Measures NaCl level.
+39,FIT-501,Sensor,Flow meter; RO membrane inlet flow meter.
+40,FIT-502,Sensor,Flow meter; RO Permeate flow meter.
+41,FIT-503,Sensor,Flow meter; RO Reject flow meter.
+42,FIT-504,Sensor,Flow meter; RO re-circulation flow meter.
+43,P-501,Actuator,Pump; Pumps dechlorinated water to RO.
+44,P-502 (backup),Actuator,Pump; Pumps dechlorinated water to RO.
+45,PIT-501,Sensor,Pressure meter; RO feed pressure.
+46,PIT-502,Sensor,Pressure meter; RO permeate pressure.
+47,PIT-503,Sensor,Pressure meter;RO reject pressure.
+48,FIT-601,Sensor,Flow meter; UF Backwash flow meter.
+49,P-601,Actuator,Pump; Pumps water from RO permeate tank to raw water tank (not used for data collection).
+50,P-602,Actuator,Pump; Pumps water from UF back wash tank to UF filter to clean the membrane.
+51,P-603,Actuator,Not implemented in SWaT yet.
