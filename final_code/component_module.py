@@ -1,12 +1,23 @@
 # module for component code
 import networkx as nx
 import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
 from matplotlib.patches import FancyArrowPatch, Patch, ArrowStyle
 from matplotlib.lines import Line2D
 from matplotlib.text import Annotation
+
+# for KDE
+from scipy.stats import gaussian_kde
+
+# for parallel processing
+from joblib import Parallel, delayed
+
+
 # class to act as knowledge object for each component in the system
 class Component:
-    def __init__(self, name, list_position, correlation_dict= None, p_value_dict= None, non_lin_correlation_dict= None, non_lin_p_value_dict = None ):
+    def __init__(self, name, list_position,mutual_info_dict=None, correlation_dict=None, p_value_dict=None,
+                 non_lin_correlation_dict=None, non_lin_p_value_dict=None ):
         self.name = name
         # position in results list
         self.list_position = list_position
@@ -17,6 +28,7 @@ class Component:
         self.p_value_dict = p_value_dict if p_value_dict is not None else {}
         self.non_lin_correlation_dict = non_lin_correlation_dict if non_lin_correlation_dict is not None else {}
         self.non_lin_p_value_dict = non_lin_p_value_dict if p_value_dict is not None else {}
+        self.mutual_info_dict = mutual_info_dict if mutual_info_dict is not None else {}
 
     def get_correlated_components(self, source_data= 'linear', lower_threshold= 0, upper_threshold= 1):
         """
@@ -91,6 +103,23 @@ class Component:
                 if component != self.name and  lower_threshold <= p_value <= upper_threshold:
                     correlated_components_p_value[component] = p_value
             return correlated_components_p_value
+
+    # return n strongerst correlations
+    def get_mutual_info(self, top_mi_components = -1):
+        """
+        Returns mutual information, takes optional number or strongest mi
+
+        Parameters:
+        - top_mi_components: Number of strongest mi to return, default is all
+
+        Returns:
+        - A dictionary containing component names as keys and correlation values as values.
+        """
+
+
+        sorted_dict = dict(sorted(self.mutual_info_dict.items(), key=lambda item: item[1], reverse=True))
+
+        return dict(list(sorted_dict.items())[:top_mi_components])
 
 
 
@@ -265,3 +294,212 @@ def plot_component_comparison(component1, component2, linear_corr_dict_1, non_li
     #plt.savefig('D:\GitHub\MSc-Project\Write_Up\Charts\lit_301_401_corr_comparison.jpeg', format='jpeg')
 
     plt.show()
+
+
+
+def getDistributionBins(df, variable_col, save_path = None):
+    '''
+    Function to get distribution of values in variable column and plots as binned values
+
+    Parameters:
+        df: SWaT Data
+        variable_col: pandas series with component values
+        save_path: optional if jpeg of plot needed
+    Returns
+    '''
+
+
+    # df to hold variable distributions
+    df_distributions = pd.DataFrame()
+    #get variable min and max values and calculate range
+
+
+
+    var_range = df[variable_col].max() - df[variable_col].min()
+
+    print(f'Var Range:  {var_range}')
+
+    # divide into 100 bins
+    bin_size = var_range/100
+
+    # Create bins edges from min to max with using bin_size'
+    bins = np.arange(df[variable_col].min(), df[variable_col].max() + bin_size, bin_size)
+
+    # Use pd.cut to segment and sort the data values into bins
+    df_distributions[variable_col + '_bins'] = pd.cut(df[variable_col], bins=bins, include_lowest=True)
+
+    # Count the number of values in each bin
+    bin_counts = df_distributions[variable_col + '_bins'].value_counts().sort_index()
+
+    # call sisualisation function
+    plotBinCounts(variable_col, bin_counts, bins, save_path)
+
+    # return bin_counts, bins
+
+
+def plotBinCounts(name, bin_counts, bin_edges, save_path):
+    '''
+    Function to plot the distribution of bin counts.
+    Parameters:
+    - bin_counts: a pandas Series containing the counts of values in each bin.
+    - bin_edges: an array containing the bin edges.
+    '''
+
+    # Set the size of the plot
+    plt.figure(figsize=(10,6))
+
+    # Plot the bin counts
+    bin_counts.plot(kind='bar', logy=True)
+
+    # Set the title and labels
+    plt.title(f'Distribution of {name}')
+    plt.ylabel('Counts')
+
+    # Calculate total range and step size for approximately 10 divisions
+    total_range = bin_edges[-1] - bin_edges[0]
+    step_size = total_range / 10
+
+    # Round step size to a whole number (e.g., 10, 20, etc.) that makes sense for your data
+    rounded_step_size = round(step_size / 10) * 10
+
+    # Generate custom tick positions and labels
+    tick_positions = np.arange(0, len(bin_edges) - 1, rounded_step_size / (bin_edges[1] - bin_edges[0]))
+    tick_labels = [f"{bin_edges[int(pos)]:.0f}" for pos in tick_positions]
+
+    # Set x-ticks to represent the overall value range of the bins
+    plt.xticks(ticks=tick_positions,
+               labels=tick_labels,
+               rotation=45)  # Rotate labels for better readability
+
+    # Optional: Set x-axis label
+    plt.xlabel('Value Range')
+
+    if save_path:
+        plt.savefig(save_path, format='jpeg')
+
+    # Show the plot
+    plt.show()
+
+
+def getKDEDensity(df, variable_col, bandwidth_adjust=1, save_path=None):
+    '''
+    Generate and plot kernel density estimate for a variable column using gaussian_kde.
+
+    Parameters:
+    df: SWaT Data
+    variable_col: component name in df
+    bandwidth_adjust: factor to adjust bandwidth/ STD of the KDE
+    save_path: Path to save image to, format is jpeg
+
+    Returns:
+    Nothing but plots KDE and save image is path is given.
+    '''
+    # Check if there are any missing values in the variable column
+    if df[variable_col].isnull().sum() > 0:
+        print(f"Warning: {df[variable_col].isnull().sum()} missing values in {variable_col}, filling with median.")
+        df[variable_col].fillna(df[variable_col].median(), inplace=True)
+
+    # Extract the data and convert to numpy array
+    data = df[variable_col].dropna().values
+
+    # Calculate KDE using scipy's gaussian_kde
+    kde = gaussian_kde(data, bw_method='scott' * bandwidth_adjust)
+
+    # Create a grid of values over which to evaluate the KDE
+    x_grid = np.linspace(data.min(), data.max(), 1000)
+
+    # Evaluate KDE on the grid
+    kde_values = kde(x_grid)
+
+    # Plot the KDE
+    plt.figure(figsize=(10, 6))
+    plt.plot(x_grid, kde_values, color='blue', lw=2)
+    plt.fill_between(x_grid, kde_values, color='skyblue', alpha=0.5)
+
+    # Add title and labels
+    plt.title(f'Kernel Density Estimate of {variable_col}', fontsize=16)
+    plt.xlabel(variable_col, fontsize=12)
+    plt.ylabel('Density', fontsize=12)
+
+    if save_path:
+        plt.savefig(save_path, format='jpeg')
+
+    # Show plot
+    plt.show()
+
+
+def compute_mutual_information(x_col, y_col, num_points=100):
+    '''
+    Helper function to compute mutual information between two columns using KDE.
+    '''
+    # Kernel Density Estimate for joint distribution p(x, y)
+    kde_joint = gaussian_kde(np.vstack([x_col, y_col]))
+
+    # Kernel Density Estimate for marginal distributions p(x) and p(y)
+    kde_x = gaussian_kde(x_col)
+    kde_y = gaussian_kde(y_col)
+
+    # Create a grid of values where we will estimate the densities
+    x_min, x_max = x_col.min(), x_col.max()
+    y_min, y_max = y_col.min(), y_col.max()
+
+    # Create grid points
+    x_grid = np.linspace(x_min, x_max, num_points)
+    y_grid = np.linspace(y_min, y_max, num_points)
+    X, Y = np.meshgrid(x_grid, y_grid)
+    positions = np.vstack([X.ravel(), Y.ravel()])
+
+    # Estimate densities on the grid
+    p_xy = kde_joint(positions).reshape(num_points, num_points)  # Joint density
+    p_x = kde_x(x_grid)  # Marginal density for x
+    p_y = kde_y(y_grid)  # Marginal density for y
+
+    # Normalize the densities to get probability values
+    p_xy /= np.sum(p_xy)  # Normalize joint density
+    p_x /= np.sum(p_x)    # Normalize x marginal density
+    p_y /= np.sum(p_y)    # Normalize y marginal density
+
+    # Calculate mutual information
+    mi = 0.0
+    for i in range(num_points):
+        for j in range(num_points):
+            if p_xy[i, j] > 0 and p_x[i] > 0 and p_y[j] > 0:
+                mi += p_xy[i, j] * np.log(p_xy[i, j] / (p_x[i] * p_y[j]))
+
+    return mi
+
+def kde_mutual_information(df, component_name, num_points=100, n_jobs=-1):
+    '''
+    Calculate mutual information between a given component and all other components using KDE.
+
+    Parameters:
+    df: pd.DataFrame - Dataset
+    component_name: str - Component/column name for which to calculate MI against others
+    num_points: int - Number of grid points for KDE (default: 100)
+    n_jobs: int - Number of parallel jobs (default: -1, use all available cores)
+
+    Returns:
+    pd.Series - Mutual information between the component and all other columns in the DataFrame.
+    '''
+
+    # Select the component/column of interest
+    x_col = np.array(df[component_name])
+
+    # Define a helper function for parallel execution
+    def compute_mi_for_column(other_component):
+        if other_component == component_name:
+            return None  # Skip if it's the same component
+        y_col = np.array(df[other_component])
+        mi = compute_mutual_information(x_col, y_col, num_points)
+        return other_component, mi
+
+    # Use joblib to parallelize the computation
+    results = Parallel(n_jobs=n_jobs)(
+        delayed(compute_mi_for_column)(col) for col in df.columns if col != component_name
+    )
+
+    # Convert the results to a dictionary and then to a pandas Series
+    mutual_info_results = {key: value for key, value in results if key is not None}
+
+    # Return as a pandas Series for easy access
+    return pd.Series(mutual_info_results)
