@@ -196,7 +196,26 @@ def plot_correlation_network(component1,lower_threshold= 0.5, upper_threshold= 1
     plt.title("Network of Components Linked by Correlation Strength")
     plt.show()
 
+def drop_static_columns(df: pd.DataFrame) -> (pd.DataFrame, list[str]):
+    """
+    Find columns in the DataFrame where all values are the same (static columns).
 
+    Parameters:
+        df : All values from SWaT .
+
+    Returns:
+        df_cleaned: Columns from SWaT which have more than 1 value.
+        static_columns: dropped columns
+
+    """
+    column_names = df.columns
+    static_columns = []
+    for column in column_names:
+        if df[column].min() == df[column].max():
+            static_columns.append(column)
+
+    df_cleaned = df.drop(columns= static_columns)
+    return df_cleaned, static_columns
 
 def plot_component_comparison(component1, component2, linear_corr_dict_1, non_linear_corr_dict_1, linear_corr_dict_2, non_linear_corr_dict_2, lower_threshold=0.5, upper_threshold=1, top_n_corrs=0, layout=nx.spring_layout):
     """
