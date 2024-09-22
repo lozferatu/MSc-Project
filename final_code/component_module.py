@@ -7,6 +7,8 @@ from matplotlib.patches import FancyArrowPatch, Patch, ArrowStyle
 from matplotlib.lines import Line2D
 from matplotlib.text import Annotation
 
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+
 # for KDE
 from scipy.stats import gaussian_kde
 
@@ -528,7 +530,8 @@ def kde_mutual_information(df, component_name, num_points=100, n_jobs=-1):
 
 
 
-def doFourierAnalysis(df, column_name, dt=10.0):
+def doFourierAnalysis(df, column_name, dt=1):
+
     """
     Perform Fourier analysis on a specified column of a DataFrame and return the frequency bins and power spectrum.
 
@@ -558,9 +561,18 @@ def doFourierAnalysis(df, column_name, dt=10.0):
     # Compute the frequency bins
     freq = np.fft.fftfreq(N, dt)
 
+    # Remove the DC component (zero frequency)
+    # Find indices where the frequency is greater than 0
+    valid_indices = freq > 0
+
+    freq = freq[valid_indices]
+    power_spectrum = power_spectrum[valid_indices]
+
     return freq, power_spectrum
 
-def get_harmonic_time_differences(df, column_name, dt=10.0):
+
+def get_harmonic_time_differences(df, column_name, dt=1):
+
     """
     Calculate the time differences between peak values of the signal for the harmonics.
 
@@ -587,37 +599,6 @@ def get_harmonic_time_differences(df, column_name, dt=10.0):
     time_differences = {f"Harmonic {n} ({harm}) Hz": fundamental_period / n for n, harm in enumerate(harmonics, start=2)}
 
     return time_differences
-
-def doFourierAnalysis(df, column_name):
-    """
-    Performs Fourier analysis on named column in the passed DataFrame, plots the power spectrum against the frequency bins.
-
-    The plot is displayed on logarithmic scaled axis.
-
-    Parameters:
-    df (pandas.DataFrame): Sensor values DataFrame.
-    column_name (str): The name of the column to analyze.
-
-    Returns:
-    None
-    """
-    # Extract the data from the DataFrame
-    data = df[column_name].values
-
-    # Number of data points
-    N = len(data)
-
-    # Compute the Fast Fourier Transform (FFT)
-    fft_data = np.fft.fft(data)
-
-    # Compute the Power Spectrum (magnitude of the FFT squared)
-    power_spectrum = np.abs(fft_data) ** 2
-
-    # Compute the frequency bins
-    # If you have a time step dt between data points, replace 1.0 with dt in the line below
-    freq = np.fft.fftfreq(N, 10.0)
-
-    return (freq, power_spectrum)
 
 def performFourierAndLimitHarmonics(df=None, column_name=None,  series=None, num_harmonics=3):
 
@@ -647,3 +628,107 @@ def performFourierAndLimitHarmonics(df=None, column_name=None,  series=None, num
     return reconstructed_signal, fft_data_limited
 
 
+
+
+# %%
+#  Function to find the fundamental frequency
+def find_fundamental_frequency(freq, power_spectrum):
+    # Peaks in the power spectrum
+    peaks, _ = find_peaks(power_spectrum)
+
+    # Fundamental frequency (the first peak)
+    if peaks.size > 0:
+        fundamental_freq = freq[peaks[0]]  # The first peak corresponds to the fundamental frequency
+        return fundamental_freq
+    else:
+        return None
+
+def calculate_phase_and_time_difference(df, column1, column2, dt=1):
+    """
+    Calculate the phase difference and time difference between the fundamental frequencies of two signals.
+
+    Parameters:
+    df (pandas.DataFrame): The input DataFrame containing the data to analyze.
+    column1 (str): The name of the first column in the DataFrame.
+    column2 (str): The name of the second column in the DataFrame.
+    dt (float): The time step between data points.
+
+    Returns:
+    tuple: A tuple containing the phase difference in radians and the time difference in seconds.
+    """
+    # Perform Fourier analysis on both columns
+    data1 = df[column1].values
+    data2 = df[column2].values
+
+    fft_data1 = np.fft.fft(data1)
+    fft_data2 = np.fft.fft(data2)
+
+    freq1 = np.fft.fftfreq(len(data1), dt)
+    freq2 = np.fft.fftfreq(len(data2), dt)
+
+    # Identify fundamental frequencies
+    power_spectrum1 = np.abs(fft_data1) ** 2
+    power_spectrum2 = np.abs(fft_data2) ** 2
+
+    peak_indices1, _ = find_peaks(power_spectrum1)
+    peak_indices2, _ = find_peaks(power_spectrum2)
+
+    peak_freq1 = freq1[peak_indices1[np.argmax(power_spectrum1[peak_indices1])]]
+    peak_freq2 = freq2[peak_indices2[np.argmax(power_spectrum2[peak_indices2])]]
+
+    # Find the corresponding phase at the fundamental frequencies
+    phase1 = np.angle(fft_data1[peak_indices1[np.argmax(power_spectrum1[peak_indices1])]])
+    phase2 = np.angle(fft_data2[peak_indices2[np.argmax(power_spectrum2[peak_indices2])]])
+
+    # Calculate the phase difference
+    phase_difference = phase2 - phase1
+
+    # Calculate the time difference
+    avg_freq = (peak_freq1 + peak_freq2) / 2  # Average fundamental frequency
+    time_difference = phase_difference / (2 * np.pi * avg_freq)
+
+    return phase_difference, time_difference
+
+
+def scaler_sec_midnight(csv_path, converted_path, scaler_type='original'):
+    '''
+    Converts csv to one with seconds since midnight as the index and min max scaled so values are between o and 1
+    :param csv_path:
+    :param converted_path:
+    :para scaler_type: Type of scaler to apply
+                        'standard'
+                        'minmax'
+                        'original'
+    :return: converted df
+    '''
+    df = pd.read_csv(csv_path)
+
+    # df.head()
+    df, dropped_cols = drop_static_columns(df)
+    # convert time to seconds since midnight
+    # Convert 'Timestamp' column to datetime format
+    df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+    df['time_in_seconds'] = (
+                df['Timestamp'].dt.hour * 3600 + df['Timestamp'].dt.minute * 60 + df['Timestamp'].dt.second)
+    df.set_index('time_in_seconds', inplace=True)
+    df.drop(columns=['Timestamp', 'time'], inplace=True)
+
+    # normalised data
+    if scaler_type == 'standard':
+        scaler = StandardScaler()
+        df_normalised = scaler.fit_transform(df)
+
+    elif scaler_type == 'minmax':
+        scaler = MinMaxScaler()
+        df_normalised = scaler.fit_transform(df)
+
+    else:
+        df_normalised = df
+
+    # convert back to df with index
+    if scaler_type in ['standard', 'minmax']:
+        df_normalised = pd.DataFrame(df_normalised, columns=df.columns, index=df.index)
+
+    df_normalised.to_csv(converted_path)
+
+    return df_normalised
