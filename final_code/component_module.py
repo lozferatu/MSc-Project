@@ -12,7 +12,8 @@ from scipy.stats import gaussian_kde
 
 # for parallel processing
 from joblib import Parallel, delayed
-
+import matplotlib.pyplot as plt
+from scipy.signal import find_peaks
 
 # class to act as knowledge object for each component in the system
 class Component:
@@ -116,8 +117,9 @@ class Component:
         - A dictionary containing component names as keys and correlation values as values.
         """
 
+        filtered_dict = {k: v for k, v in self.mutual_info_dict.items() if np.isfinite(v)}
 
-        sorted_dict = dict(sorted(self.mutual_info_dict.items(), key=lambda item: item[1], reverse=True))
+        sorted_dict = dict(sorted(filtered_dict.items(), key=lambda item: item[1], reverse=True))
 
         return dict(list(sorted_dict.items())[:top_mi_components])
 
@@ -522,3 +524,126 @@ def kde_mutual_information(df, component_name, num_points=100, n_jobs=-1):
 
     # Return as a pandas Series for easy access
     return pd.Series(mutual_info_results)
+
+
+
+
+def doFourierAnalysis(df, column_name, dt=10.0):
+    """
+    Perform Fourier analysis on a specified column of a DataFrame and return the frequency bins and power spectrum.
+
+    This function computes the Fast Fourier Transform (FFT) of the data in the specified column,
+    calculates the power spectrum, and returns the power spectrum along with the frequency bins.
+
+    Parameters:
+    df (pandas.DataFrame): The input DataFrame containing the data to analyze.
+    column_name (str): The name of the column in the DataFrame to analyze.
+    dt (float): The time step between data points.
+
+    Returns:
+    tuple: A tuple containing the frequency bins and the power spectrum.
+    """
+    # Extract the data from the DataFrame
+    data = df[column_name].values
+
+    # Number of data points
+    N = len(data)
+
+    # Compute the Fast Fourier Transform (FFT)
+    fft_data = np.fft.fft(data)
+
+    # Compute the Power Spectrum (magnitude of the FFT squared)
+    power_spectrum = np.abs(fft_data) ** 2
+
+    # Compute the frequency bins
+    freq = np.fft.fftfreq(N, dt)
+
+    return freq, power_spectrum
+
+def get_harmonic_time_differences(df, column_name, dt=10.0):
+    """
+    Calculate the time differences between peak values of the signal for the harmonics.
+
+    Parameters:
+    df (pandas.DataFrame): The input DataFrame containing the data to analyze.
+    column_name (str): The name of the column in the DataFrame to analyze.
+    dt (float): The time step between data points.
+
+    Returns:
+    dict: A dictionary containing the harmonic frequencies and their corresponding time differences.
+    """
+    # Perform Fourier analysis
+    freq, power_spectrum = doFourierAnalysis(df, column_name, dt)
+
+    # Find the peak frequency (fundamental frequency)
+    peak_indices, _ = find_peaks(power_spectrum)
+    peak_freq = freq[peak_indices[np.argmax(power_spectrum[peak_indices])]]
+    fundamental_period = 1 / peak_freq
+
+    # Identify harmonics
+    harmonics = [peak_freq * n for n in range(2, 6)]  # First four harmonics
+
+    # Calculate time differences
+    time_differences = {f"Harmonic {n} ({harm}) Hz": fundamental_period / n for n, harm in enumerate(harmonics, start=2)}
+
+    return time_differences
+
+def doFourierAnalysis(df, column_name):
+    """
+    Performs Fourier analysis on named column in the passed DataFrame, plots the power spectrum against the frequency bins.
+
+    The plot is displayed on logarithmic scaled axis.
+
+    Parameters:
+    df (pandas.DataFrame): Sensor values DataFrame.
+    column_name (str): The name of the column to analyze.
+
+    Returns:
+    None
+    """
+    # Extract the data from the DataFrame
+    data = df[column_name].values
+
+    # Number of data points
+    N = len(data)
+
+    # Compute the Fast Fourier Transform (FFT)
+    fft_data = np.fft.fft(data)
+
+    # Compute the Power Spectrum (magnitude of the FFT squared)
+    power_spectrum = np.abs(fft_data) ** 2
+
+    # Compute the frequency bins
+    # If you have a time step dt between data points, replace 1.0 with dt in the line below
+    freq = np.fft.fftfreq(N, 10.0)
+
+    return (freq, power_spectrum)
+
+def performFourierAndLimitHarmonics(df=None, column_name=None,  series=None, num_harmonics=3):
+
+    if df is not None and column_name is not None:
+        data = df[column_name].values
+    elif series is not None and isinstance(series, pd.Series):
+        data = series.values
+
+    fft_data = np.fft.fft(data)
+
+        
+    N = len(data)
+
+    # Compute the magnitude of the FFT and find the indices of the largest components
+    magnitudes = np.abs(fft_data)
+    indices = np.argsort(magnitudes)[::-1]  # Sort indices by magnitude in descending order
+
+    # Zero out all but the largest `num_harmonics` components
+    fft_data_limited = np.zeros(N, dtype=complex)
+    for i in range(num_harmonics):
+        index = indices[i]
+        fft_data_limited[index] = fft_data[index]
+
+    # Inverse FFT to reconstruct the signal with limited harmonics
+    reconstructed_signal = np.fft.ifft(fft_data_limited)
+
+    return reconstructed_signal, fft_data_limited
+
+
