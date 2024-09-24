@@ -17,11 +17,18 @@ from joblib import Parallel, delayed
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 
+# for serialising object
+import pickle
+
 # class to act as knowledge object for each component in the system
 class Component:
-    def __init__(self, name, list_position,mutual_info_dict=None, correlation_dict=None, p_value_dict=None,
-                 non_lin_correlation_dict=None, non_lin_p_value_dict=None ):
+    def __init__(self, name, list_position,  df_orig, min_value=None, max_value=None, step_size=None, correlation_dict=None, p_value_dict=None,
+                 non_lin_correlation_dict=None, non_lin_p_value_dict=None, mutual_info_dict=None, wave_diff_dict=None   ):
         self.name = name
+        self.min_value = min_value
+        self.max_value = max_value
+        self.step_size = step_size
+
         # position in results list
         self.list_position = list_position
         self.top_n_corrs = 0
@@ -32,6 +39,33 @@ class Component:
         self.non_lin_correlation_dict = non_lin_correlation_dict if non_lin_correlation_dict is not None else {}
         self.non_lin_p_value_dict = non_lin_p_value_dict if p_value_dict is not None else {}
         self.mutual_info_dict = mutual_info_dict if mutual_info_dict is not None else {}
+        self.wave_diff_dict = wave_diff_dict if wave_diff_dict is not None else {}
+
+        # Initialise min, max, and step size
+        self.min_value, self.max_value, self.step_size = self.calculate_min_max_step_size(df_orig)
+
+
+        # Initialie wave difference dict
+        #self.wave_diff_dict = wave_diff_dict if wave_diff_dict is not None else self.calculate_wave_differences(df_orig)
+
+
+    def calculate_min_max_step_size(self, df):
+        """
+        Calculates the min, max and largest step size for the component.
+        """
+        if self.name in df.columns:
+            column_data = df[self.name].dropna()
+            min_value = column_data.min()
+            max_value = column_data.max()
+
+            # Compute step size as the largest difference between consecutive time steps
+            step_size = column_data.diff().abs().max() if len(column_data) > 1 else 0
+
+            return min_value, max_value, step_size
+        else:
+            # return default values
+            return 0, 0, 0
+
 
     def get_correlated_components(self, source_data= 'linear', lower_threshold= 0, upper_threshold= 1):
         """
@@ -124,6 +158,86 @@ class Component:
         sorted_dict = dict(sorted(filtered_dict.items(), key=lambda item: item[1], reverse=True))
 
         return dict(list(sorted_dict.items())[:top_mi_components])
+
+    def calculate_wave_differences(self, df):
+        """
+        Calculate phase and time differences between this component and all other components.
+        """
+        wave_diff_dict = {}
+
+        # Loop through all other columns in the DataFrame
+        for column in df.columns:
+            if column != self.name:
+                phase_diff, time_diff = calculate_phase_and_time_difference(df, self.name, column)
+                wave_diff_dict[column] = {'phase_diff': phase_diff, 'time_diff': time_diff}
+
+        return wave_diff_dict
+    def calculate_phase_and_time_difference(df_orig, column1, column2, dt=1):
+        """
+        Calculate the phase difference and time difference between the fundamental frequencies of two signals.
+        """
+
+
+
+        # Perform Fourier analysis on both columns
+        data1 = df[column1].values
+        data2 = df[column2].values
+
+        fft_data1 = np.fft.fft(data1)
+        fft_data2 = np.fft.fft(data2)
+
+        freq1 = np.fft.fftfreq(len(data1), dt)
+        freq2 = np.fft.fftfreq(len(data2), dt)
+
+        # Identify fundamental frequencies
+        power_spectrum1 = np.abs(fft_data1) ** 2
+        power_spectrum2 = np.abs(fft_data2) ** 2
+
+        peak_indices1, _ = find_peaks(power_spectrum1)
+        peak_indices2, _ = find_peaks(power_spectrum2)
+
+        # Check if peaks were found
+        if len(peak_indices1) == 0 or len(peak_indices2) == 0:
+            # return None or zeros)
+            return None, None
+
+        peak_freq1 = freq1[peak_indices1[np.argmax(power_spectrum1[peak_indices1])]]
+        peak_freq2 = freq2[peak_indices2[np.argmax(power_spectrum2[peak_indices2])]]
+
+        # Find the corresponding phase at the fundamental frequencies
+        phase1 = np.angle(fft_data1[peak_indices1[np.argmax(power_spectrum1[peak_indices1])]])
+        phase2 = np.angle(fft_data2[peak_indices2[np.argmax(power_spectrum2[peak_indices2])]])
+
+        # Calculate the phase difference
+        phase_difference = phase2 - phase1
+
+        # Calculate the time difference
+        avg_freq = (peak_freq1 + peak_freq2) / 2  # Average fundamental frequency
+        time_difference = phase_difference / (2 * np.pi * avg_freq)
+
+
+        # default values
+        phase_difference= 9999
+        time_difference= 9999
+
+        return phase_difference, time_difference
+
+
+
+def save_component(component_obj, filename):
+    ''' Function to save the Component object, use .pkl extension'''
+    with open(filename, 'wb') as file:
+        pickle.dump(component_obj, file)
+    print(f"Component '{component_obj.name}' saved to {filename}.")
+
+
+def load_component(filename):
+    ''' Function to load the Component object'''
+    with open(filename, 'rb') as file:
+        component_obj = pickle.load(file)
+    print(f"Component '{component_obj.name}' has been loaded from {filename}.")
+    return component_obj
+
 
 
 
@@ -705,14 +819,18 @@ def scaler_sec_midnight(csv_path, converted_path, scaler_type='original'):
 
     # df.head()
     df, dropped_cols = drop_static_columns(df)
-    # convert time to seconds since midnight
-    # Convert 'Timestamp' column to datetime format
-    df['Timestamp'] = pd.to_datetime(df['Timestamp'])
-    df['time_in_seconds'] = (
-                df['Timestamp'].dt.hour * 3600 + df['Timestamp'].dt.minute * 60 + df['Timestamp'].dt.second)
-    df.set_index('time_in_seconds', inplace=True)
-    df.drop(columns=['Timestamp', 'time'], inplace=True)
 
+    # check not already converted to second
+    if 'Timestamp' in df.columns:
+        # convert time to seconds since midnight
+        # Convert 'Timestamp' column to datetime format
+        df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+        df['time_in_seconds'] = (
+                    df['Timestamp'].dt.hour * 3600 + df['Timestamp'].dt.minute * 60 + df['Timestamp'].dt.second)
+        df.drop(columns=['Timestamp', 'time'], inplace=True)
+
+
+    df.set_index('time_in_seconds', inplace=True)
     # normalised data
     if scaler_type == 'standard':
         scaler = StandardScaler()
