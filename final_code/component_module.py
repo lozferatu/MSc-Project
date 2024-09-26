@@ -23,11 +23,13 @@ import pickle
 # class to act as knowledge object for each component in the system
 class Component:
     def __init__(self, name, list_position,  df_orig, min_value=None, max_value=None, step_size=None, correlation_dict=None, p_value_dict=None,
-                 non_lin_correlation_dict=None, non_lin_p_value_dict=None, mutual_info_dict=None, wave_diff_dict=None   ):
+                 non_lin_correlation_dict=None, non_lin_p_value_dict=None, mutual_info_dict=None, wave_diff_dict=None, change_ratio=None   ):
         self.name = name
         self.min_value = min_value
         self.max_value = max_value
         self.step_size = step_size
+        self.change_ratio = change_ratio
+
 
         # position in results list
         self.list_position = list_position
@@ -42,7 +44,7 @@ class Component:
         self.wave_diff_dict = wave_diff_dict if wave_diff_dict is not None else {}
 
         # Initialise min, max, and step size
-        self.min_value, self.max_value, self.step_size = self.calculate_min_max_step_size(df_orig)
+        self.min_value, self.max_value, self.step_size, self.change_ratio = self.calculate_min_max_step_size(df_orig)
 
 
         # Initialie wave difference dict
@@ -61,7 +63,11 @@ class Component:
             # Compute step size as the largest difference between consecutive time steps
             step_size = column_data.diff().abs().max() if len(column_data) > 1 else 0
 
-            return min_value, max_value, step_size
+            # calculatege ratio for component characterisation
+            value_range = max_value - min_value
+            change_ratio = value_range / step_size
+
+            return min_value, max_value, step_size, change_ratio
         else:
             # return default values
             return 0, 0, 0
